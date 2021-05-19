@@ -1,0 +1,139 @@
+---
+title: "final data Analysis"
+author: "Rana Gahwagy"
+date: "5/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+library(scales)
+```
+
+```{r}
+if (!require("ipumsr")) stop("Reading IPUMS data into R requires the ipumsr package. It can be installed using the following command: install.packages('ipumsr')")
+
+ddi <- read_ipums_ddi("usa_00007.xml")
+data <- read_ipums_micro(ddi)
+```
+
+```{r}
+income_info <- data %>%
+  filter(MARST == 1 | 6, 
+         INCEARN > 0, 
+         AGE >= 18) %>%
+  #married = 0 , single = 1
+  mutate(MARST = ifelse(MARST == 1,0,1))
+```
+
+#final analysis 
+#final data sample & models
+```{r}
+set.seed(123)
+final_sample <-  sample_n(income_info, 1000)
+final_model_full <- lm(INCEARN ~ AGE+as.factor(RACE)+as.factor(SEX)+UHRSWORK+TRANTIME, data = final_sample)
+final_model <- lm(INCEARN ~ AGE+as.factor(RACE)+as.factor(SEX)+UHRSWORK, data = final_sample)
+trans_final_model <- lm(log(INCEARN) ~ AGE+as.factor(RACE)+as.factor(SEX)+UHRSWORK, data = final_sample)
+
+```
+# anova test
+
+```{r}
+#full
+m9<- lm(log(INCEARN) ~ AGE+as.factor(RACE)+as.factor(SEX)+UHRSWORK, data = final_sample)
+#reduced 
+m10<- lm(log(INCEARN) ~ AGE+as.factor(SEX)+UHRSWORK, data = final_sample)
+
+anova(m10, m9) # not significant => fail to reject null => RACE is not helpful in this model
+```
+
+# data summary
+```{r}
+summary(final_model_full)
+```
+```{r}
+summary(final_model)
+```
+```{r}
+summary(trans_final_model)
+```
+
+#summary table
+```{r}
+tab_model(trans_final_model, pred.labels = c("Intercept", "Age", "Black/African American", "American Indian or Alaska Native", "Chinese", "Japanese", "Other Asian or Pacific Islander", "Other race", "Two major races", "Three or more major races", "Female", "Usual hours worked per
+week"))
+```
+
+## visualzations 
+###scatter plots 
+```{r}
+ggplot(data =final_sample, aes(x= log(AGE), y = log(INCEARN), color=as.factor(SEX),  shape= as.factor(MARST))) + 
+         geom_point() 
+
+ggplot(data =final_sample, aes(x= AGE, y = log(INCEARN), color= as.factor(MARST), shape= as.factor(SEX))) + geom_point() #include 
+
+ggplot(data =final_sample, aes(x=UHRSWORK , y = log(INCEARN), color=as.factor(MARST ))) + 
+         geom_point() + geom_smooth(method = "lm", se= F)
+```
+```{r}
+ggplot(data =final_sample, aes(x=UHRSWORK , y = log(INCEARN), color=as.factor(SEX),  shape= as.factor(MARST ))) + 
+         geom_point()
+
+ggplot(data =final_sample, aes(x=UHRSWORK , y = log(INCEARN), color=as.factor(RACE),  shape= as.factor(SEX ))) + 
+         geom_point()
+
+ggplot(data =final_sample, aes(x=AGE , y = log(INCEARN), color=as.factor(RACE),  shape= as.factor(MARST))) + 
+         geom_point()
+```
+
+###boxplots 
+```{r}
+x1 <- ggplot(data =final_sample, aes(x= as.factor(SEX), y = INCEARN, color=as.factor(MARST) )) + 
+         geom_boxplot() + theme_bw() +
+  labs(title="Sex vs Income", x ="Sex", y = "Income (Dollars)") +
+  scale_x_discrete(labels=c("1" = "Male", "2" = "Female")) +
+  scale_color_discrete(name = "Marital Status", labels = c("Married", "Never Married/Single")) +
+  scale_y_continuous(labels = dollar) + theme(legend.position="bottom")
+
+x2 <- ggplot(data =final_sample, aes(x= as.factor(RACE), y = INCEARN)) + 
+         geom_boxplot()+ theme_bw() +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2), labels = c("1" = "White", "2" = "Black", "3" = "Native", "4" ="Chinese","5" = "Japanese","6"= "Pacific Islander", "7"="Other","8"= "Two major", "9"="Three or more"))+
+  labs(title="Race vs Income ", x ="Race", y = "Income (Dollars)") +
+  scale_y_continuous(labels = dollar)
+x1+x2
+```
+
+
+## liner regression conditions 
+```{r}
+
+ggplot(data = final_sample, aes(fitted.values(trans_final_model), resid(trans_final_model))) +
+  geom_point() +
+  geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
+  labs(x = "Fitted Values",
+       y = "Residuals") +
+  ggtitle("Residual vs Fitted Plot") +
+  theme_bw()
+
+ggplot(data = trans_final_model, aes(residuals(trans_final_model))) + 
+  geom_histogram() +
+  stat_bin(binwidth = 1) +
+  ggtitle("Histogram of Residuals") + 
+  xlab("Residuals") + theme_bw()
+
+ggplot(data = trans_final_model, aes(sample = residuals(trans_final_model))) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical Quantiles",
+       y = "Sample Quantiles") +
+  ggtitle("Normal Q-Q Plot") + theme_bw()
+```
+
